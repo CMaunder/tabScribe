@@ -8,8 +8,11 @@ in cmd:
     conda activate noteRecogEnv
 - Deactivate env:
     conda deactivate
+- See envs:
+    conda info --envs
+- Remove env: 
+    conda remove --name myenv --all
 
-then: 
+Then: 
 - ensure you have installed all CUDA requirement and run: conda install -c conda-forge tensorflow-gpu
-- 
 - pip install -r requirements.txt

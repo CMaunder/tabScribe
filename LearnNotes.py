@@ -22,6 +22,7 @@ class LearnNotes:
         self.EPOCHS = 5
 
     def main(self):
+        # todo - refactor
         resource_path = "./resources/allPitchNotes"
         data_dir = pathlib.Path(resource_path)
         note_names = np.array(tf.io.gfile.listdir(str(data_dir)))
