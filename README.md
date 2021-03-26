@@ -1,18 +1,15 @@
 # TabScribe
 
-Install anaconda and add to path from webpage
-in cmd:
-- conda create -n tabScribeEnv python=3.8,
-    then launch env (as below):
+###Install anaconda and add to path from webpage, some helpful commands:
+- conda create -n myenv python=3.8
 - Launch env:
-    conda activate noteRecogEnv
+    conda activate tabScribeEnv
 - Deactivate env:
     conda deactivate
 - See envs:
     conda info --envs
-- Remove env: 
+- Remove env:
     conda remove --name myenv --all
+  
+Ensure you have installed all CUDA requirement and run: conda install -c conda-forge tensorflow-gpu
 
-Then: 
-- ensure you have installed all CUDA requirement and run: conda install -c conda-forge tensorflow-gpu
-- pip install -r requirements.txt
