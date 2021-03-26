@@ -26,7 +26,7 @@ class LearnNotes:
         self.HOP_SIZE = int(self.FRAME_SIZE / 16)
         self.FRAMES_PER_IMAGE = 5
         self.TEST_SET_SIZE = 0.1
-        self.EPOCHS = 15
+        self.EPOCHS = 5
 
     def main(self):
         # todo - refactor
@@ -114,7 +114,8 @@ class LearnNotes:
 
         model.compile(optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"])
 
-        model.fit(train_images, transformed_train_label,validation_data=(test_images, transformed_test_label), epochs=self.EPOCHS, shuffle=True)
+        model.fit(train_images, transformed_train_label,validation_data=(test_images, transformed_test_label),
+                  epochs=self.EPOCHS, shuffle=True)
 
         test_loss, test_acc = model.evaluate(test_images, transformed_test_label)
         model.save("./models/notePredictModel3.h5")
