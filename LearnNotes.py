@@ -26,7 +26,7 @@ class LearnNotes:
         self.HOP_SIZE = int(self.FRAME_SIZE / 16)
         self.FRAMES_PER_IMAGE = 1
         self.TEST_SET_SIZE = 0.1
-        self.EPOCHS = 10
+        self.EPOCHS = 12
 
     def main(self):
         # todo - refactor
