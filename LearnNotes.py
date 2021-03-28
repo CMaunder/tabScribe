@@ -10,6 +10,7 @@ from sklearn.preprocessing import LabelBinarizer
 import seaborn as sns
 import glob
 import re
+import json
 
 
 class LearnNotes:
@@ -22,11 +23,11 @@ class LearnNotes:
         self.EPOCHS = 5
 
     def main(self):
-        model_name = "notePredictModel5"
-        self.generate_and_save_model(model_name)
+        model = self.generate_and_test_model()
+        model.save(f"./models/notePredictModel5.h5")
         # model = keras.models.load_model('./models/notePredictModel1.h5')
 
-    def generate_and_save_model(self, model_name):
+    def generate_and_test_model(self):
         resource_path = "./resources/allPitchNotes"
         [data_images, data_labels, note_names] = self.extract_data_from_files(resource_path)
         # Find random sample of exclude from train set and add to test/val set
@@ -71,7 +72,7 @@ class LearnNotes:
 
         model = keras.Sequential([
             keras.layers.Flatten(input_shape=(len(test_images[0]), self.FRAMES_PER_IMAGE)),
-            keras.layers.Dense(128*4, activation="relu"),
+            keras.layers.Dense(128 * 4, activation="relu"),
             keras.layers.Dense(len(note_names), activation="softmax")
         ])
         model.summary()
@@ -82,14 +83,15 @@ class LearnNotes:
                   callbacks=tf.keras.callbacks.EarlyStopping(verbose=1, patience=20))
 
         test_loss, test_acc = model.evaluate(test_images, transformed_test_label)
-        model.save(f"./models/{model_name}.h5")
         print(f"Train set size was: {len(train_images)}")
         print(f"Test set size was: {len(test_images)}")
         print(f"Tested acc: {test_acc}")
+        print(f"test images shape: {test_images.shape}")
         y_prediction = np.argmax(model.predict(test_images), axis=1)
         y_true = []
         note_names_sorted = np.sort(note_names)
         note_names_list = note_names_sorted.tolist()
+        print(note_names_list)
         for i in range(len(test_labels)):
             y_true.append(note_names_list.index(test_labels[i]))
         confusion_mtx = tf.math.confusion_matrix(y_true, y_prediction)
@@ -99,11 +101,16 @@ class LearnNotes:
         plt.xlabel('Prediction')
         plt.ylabel('True')
         plt.show()
+        return model
 
     def convert_audio_to_spectrogram(self, audio_sample):
         stft_audio = librosa.stft(audio_sample, n_fft=self.FRAME_SIZE, hop_length=self.HOP_SIZE)
         y_scale = np.abs(stft_audio) ** 2
         y_log_scale = librosa.power_to_db(y_scale)
+        min_mag = np.min(y_log_scale)
+        y_log_scale = y_log_scale - min_mag
+        max_mag = np.max(y_log_scale)
+        y_log_scale = y_log_scale / max_mag
         return y_log_scale
 
     def extract_data_from_files(self, resource_path):
@@ -127,10 +134,6 @@ class LearnNotes:
                 filename = f'{dir_to_search}/{i}.wav'
                 a, sr = librosa.load(filename)
                 y_log_scale = self.convert_audio_to_spectrogram(a)
-                min_mag = np.min(y_log_scale)
-                y_log_scale = y_log_scale - min_mag
-                max_mag = np.max(y_log_scale)
-                y_log_scale = y_log_scale / max_mag
                 note_names = np.array(tf.io.gfile.listdir(str(data_dir)))
                 seconds_per_frame = 2.5 / len(y_log_scale[0])
                 frame_of_note_start = 0.93 / seconds_per_frame
@@ -149,6 +152,34 @@ class LearnNotes:
         print("Finished extracting and fragmenting data from files")
         return [data_images, data_labels, note_names1]
 
+    # return an array of suggested notes throughout the audio track
+    def predict_notes(self, audio_track):
+        model = keras.models.load_model('./models/notePredictModel5.h5')
+
+        y_log_scale = self.convert_audio_to_spectrogram(audio_track)
+        data_images = []
+
+        for frame in range(len(y_log_scale[0]) - self.FRAMES_PER_IMAGE):
+            data_images.append(y_log_scale[:, frame:frame + self.FRAMES_PER_IMAGE])
+        data_images = np.array(data_images)
+        data_images = np.asarray(data_images)
+        print(data_images.shape)
+        prediction = model.predict(data_images)
+        y_prediction = np.argmax(prediction, axis=1)
+        with open(r'./resources/notes_list.json') as json_file:
+            data = json.load(json_file)
+        for i in range(len(y_prediction)):
+            print(data[y_prediction[i]])
+        x = range(len(y_prediction))
+        y = y_prediction
+
+        plt.scatter(x, y)
+        plt.show()
+
+
 
 learnNotes = LearnNotes()
 learnNotes.main()
+filename = './resources/notesStratUnsplit/2nd-string-all-notes-01.m4a'
+a, sr = librosa.load(filename)
+learnNotes.predict_notes(a)
