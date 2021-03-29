@@ -17,18 +17,13 @@ class LearnNotes:
 
     def __init__(self):
         self.FRAME_SIZE = int(2048 * 2)
-        self.HOP_SIZE = int(self.FRAME_SIZE / 16)
+        self.HOP_SIZE = int(self.FRAME_SIZE / 32)
         self.FRAMES_PER_IMAGE = 1
         self.TEST_VAL_SET_SIZE = 0.3
-        self.EPOCHS = 5
-        self.REQUIRED_LENGTH_TO_BE_NOTE = 10
+        self.EPOCHS = 150
+        self.REQUIRED_DURATION_TO_BE_NOTE = 1/8
 
-    def main(self):
-        model = self.generate_and_test_model()
-        model.save(f"./models/notePredictModel5.h5")
-        # model = keras.models.load_model('./models/notePredictModel1.h5')
-
-    def generate_and_test_model(self):
+    def generate_and_test_model(self, model_name):
         resource_path = "./resources/allPitchNotes"
         [data_images, data_labels, note_names] = self.extract_data_from_files(resource_path)
         # Find random sample of exclude from train set and add to test/val set
@@ -64,7 +59,6 @@ class LearnNotes:
         test_labels = np.asarray(test_labels)
         val_images = np.asarray(val_images)
         val_labels = np.asarray(val_labels)
-
         # Convert text labels into ones and zeros
         encoder = LabelBinarizer()
         transformed_train_label = encoder.fit_transform(train_labels)
@@ -81,13 +75,12 @@ class LearnNotes:
         model.fit(train_images, transformed_train_label,
                   validation_data=(val_images, transformed_val_labels),
                   epochs=self.EPOCHS, shuffle=True,
-                  callbacks=tf.keras.callbacks.EarlyStopping(verbose=1, patience=20))
+                  callbacks=tf.keras.callbacks.EarlyStopping(verbose=1, patience=10))
 
         test_loss, test_acc = model.evaluate(test_images, transformed_test_label)
         print(f"Train set size was: {len(train_images)}")
         print(f"Test set size was: {len(test_images)}")
         print(f"Tested acc: {test_acc}")
-        print(f"test images shape: {test_images.shape}")
         y_prediction = np.argmax(model.predict(test_images), axis=1)
         y_true = []
         note_names_sorted = np.sort(note_names)
@@ -101,7 +94,7 @@ class LearnNotes:
         plt.xlabel('Prediction')
         plt.ylabel('True')
         plt.show()
-        return model
+        model.save(f"./models/{model_name}.h5")
 
     def convert_audio_to_spectrogram(self, audio_sample):
         stft_audio = librosa.stft(audio_sample, n_fft=self.FRAME_SIZE, hop_length=self.HOP_SIZE)
@@ -113,14 +106,15 @@ class LearnNotes:
         y_log_scale = y_log_scale / max_mag
         return y_log_scale
 
-    def filter_notes(self, y_prediction):
+    def filter_notes(self, y_prediction, fps):
         y_prediction_filtered = []
         prev_elem = None
         curr_elem_length = 0
-
+        required_frames_to_be_note = self.REQUIRED_DURATION_TO_BE_NOTE * fps
+        print(f"required_frames_to_be_note: {required_frames_to_be_note}")
         for elemIdx in range(len(y_prediction)):
             if y_prediction[elemIdx] != prev_elem:
-                if curr_elem_length >= self.REQUIRED_LENGTH_TO_BE_NOTE:
+                if curr_elem_length >= required_frames_to_be_note:
                     for _ in range(curr_elem_length):
                         y_prediction_filtered.append(prev_elem)
                 else:
@@ -130,11 +124,17 @@ class LearnNotes:
                 curr_elem_length = 1
                 continue
             curr_elem_length += 1
-            if elemIdx == len(y_prediction)-1:
-                if curr_elem_length >= self.REQUIRED_LENGTH_TO_BE_NOTE:
+            if elemIdx == len(y_prediction) - 1:
+                if curr_elem_length >= required_frames_to_be_note:
                     for _ in range(curr_elem_length):
                         y_prediction_filtered.append(prev_elem)
         return y_prediction_filtered
+
+    def convert_notes_dict_to_seconds_from_frames(self, notes, fps):
+        notes_conv = {}
+        for noteIdx in range(len(notes)):
+            notes_conv[len(notes_conv)] = [notes[noteIdx][0] / fps, notes[noteIdx][1] / fps, notes[noteIdx][2]]
+        return notes_conv
 
     def extract_data_from_files(self, resource_path):
         print("Extracting and fragmenting data from files...")
@@ -160,14 +160,12 @@ class LearnNotes:
                 note_names = np.array(tf.io.gfile.listdir(str(data_dir)))
                 seconds_per_frame = 2.5 / len(y_log_scale[0])
                 frame_of_note_start = 0.93 / seconds_per_frame
-
-                for frame in range(len(y_log_scale[0]) - self.FRAMES_PER_IMAGE):
+                for frame in range(0, len(y_log_scale[0]) - self.FRAMES_PER_IMAGE, self.FRAMES_PER_IMAGE):
                     note_name = 'na'
                     if frame > frame_of_note_start:
                         note_name = curr_note_name
                     data_images.append(y_log_scale[:, frame:frame + self.FRAMES_PER_IMAGE])
                     data_labels.append(note_name)
-
         note_names1 = np.insert(note_names, len(note_names), 'na')
         for train_image in data_images:
             if str(train_image.shape) != f'(2049, {self.FRAMES_PER_IMAGE})':
@@ -176,30 +174,30 @@ class LearnNotes:
         return [data_images, data_labels, note_names1]
 
     # return an array of suggested notes throughout the audio track
-    def predict_notes(self, audio_track):
-        model = keras.models.load_model('./models/notePredictModel5.h5')
-
+    def predict_notes(self, audio_track, sample_rate):
+        length_of_track_s = len(audio_track) / sample_rate
+        model = keras.models.load_model('./models/notePredictModel9.h5')
         y_log_scale = self.convert_audio_to_spectrogram(audio_track)
+        frames_per_second = len(y_log_scale[0]) / length_of_track_s
+        print(f"frames per second {frames_per_second}")
         data_images = []
-
         for frame in range(len(y_log_scale[0]) - self.FRAMES_PER_IMAGE):
             data_images.append(y_log_scale[:, frame:frame + self.FRAMES_PER_IMAGE])
         data_images = np.array(data_images)
         data_images = np.asarray(data_images)
         prediction = model.predict(data_images)
         y_prediction = np.argmax(prediction, axis=1)
-        y_prediction_filtered = self.filter_notes(y_prediction)
+        y_prediction_filtered = self.filter_notes(y_prediction, frames_per_second)
         with open(r'./resources/notes_list.json') as json_file:
             data = json.load(json_file)
         filtered_list_of_notes = []
         for i in range(len(y_prediction_filtered)):
             filtered_list_of_notes.append(data[y_prediction_filtered[i]])
-
         notes_dict = {}
         current_start_duration_name = []
         for note_frame_idx in range(len(filtered_list_of_notes)):
             note_name = filtered_list_of_notes[note_frame_idx]
-            if current_start_duration_name and note_frame_idx == len(filtered_list_of_notes)-1:
+            if current_start_duration_name and note_frame_idx == len(filtered_list_of_notes) - 1:
                 notes_dict[len(notes_dict)] = current_start_duration_name
             if not current_start_duration_name and note_name != 'na':
                 current_start_duration_name = [note_frame_idx, 1, note_name]
@@ -211,20 +209,19 @@ class LearnNotes:
                 current_start_duration_name = []
             else:
                 current_start_duration_name[1] = current_start_duration_name[1] + 1
-
+        notes_dict_s = self.convert_notes_dict_to_seconds_from_frames(notes_dict, frames_per_second)
         x = range(len(y_prediction_filtered))
         y = y_prediction_filtered
         plt.scatter(x, y)
         plt.show()
-        return notes_dict
+        return notes_dict_s
 
 
 learnNotes = LearnNotes()
-# learnNotes.main()
-filename = './resources/notesStratUnsplit/5th-string-all-notes-02.m4a'
+# learnNotes.generate_and_test_model('notePredictModel9')
+filename = './resources/notesStratUnsplit/3rd-string-all-notes-02.m4a'
 # filename = './resources/c-major-scale.mp3'
 # filename = './resources/ApexGuitarSection1.mp3'
 # filename = './resources/d-flat-ionian-mode-on-treble-clef.mp3'
 a, sr = librosa.load(filename)
-notes_to_plot = learnNotes.predict_notes(a)
-print(notes_to_plot)
+print(learnNotes.predict_notes(a, sr))
