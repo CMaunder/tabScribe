@@ -21,6 +21,7 @@ class LearnNotes:
         self.FRAMES_PER_IMAGE = 1
         self.TEST_VAL_SET_SIZE = 0.3
         self.EPOCHS = 5
+        self.REQUIRED_LENGTH_TO_BE_NOTE = 10
 
     def main(self):
         model = self.generate_and_test_model()
@@ -91,7 +92,6 @@ class LearnNotes:
         y_true = []
         note_names_sorted = np.sort(note_names)
         note_names_list = note_names_sorted.tolist()
-        print(note_names_list)
         for i in range(len(test_labels)):
             y_true.append(note_names_list.index(test_labels[i]))
         confusion_mtx = tf.math.confusion_matrix(y_true, y_prediction)
@@ -112,6 +112,29 @@ class LearnNotes:
         max_mag = np.max(y_log_scale)
         y_log_scale = y_log_scale / max_mag
         return y_log_scale
+
+    def filter_notes(self, y_prediction):
+        y_prediction_filtered = []
+        prev_elem = None
+        curr_elem_length = 0
+
+        for elemIdx in range(len(y_prediction)):
+            if y_prediction[elemIdx] != prev_elem:
+                if curr_elem_length >= self.REQUIRED_LENGTH_TO_BE_NOTE:
+                    for _ in range(curr_elem_length):
+                        y_prediction_filtered.append(prev_elem)
+                else:
+                    for _ in range(curr_elem_length):
+                        y_prediction_filtered.append(47)
+                prev_elem = y_prediction[elemIdx]
+                curr_elem_length = 1
+                continue
+            curr_elem_length += 1
+            if elemIdx == len(y_prediction)-1:
+                if curr_elem_length >= self.REQUIRED_LENGTH_TO_BE_NOTE:
+                    for _ in range(curr_elem_length):
+                        y_prediction_filtered.append(prev_elem)
+        return y_prediction_filtered
 
     def extract_data_from_files(self, resource_path):
         print("Extracting and fragmenting data from files...")
@@ -163,23 +186,45 @@ class LearnNotes:
             data_images.append(y_log_scale[:, frame:frame + self.FRAMES_PER_IMAGE])
         data_images = np.array(data_images)
         data_images = np.asarray(data_images)
-        print(data_images.shape)
         prediction = model.predict(data_images)
         y_prediction = np.argmax(prediction, axis=1)
+        y_prediction_filtered = self.filter_notes(y_prediction)
         with open(r'./resources/notes_list.json') as json_file:
             data = json.load(json_file)
-        for i in range(len(y_prediction)):
-            print(data[y_prediction[i]])
-        x = range(len(y_prediction))
-        y = y_prediction
+        filtered_list_of_notes = []
+        for i in range(len(y_prediction_filtered)):
+            filtered_list_of_notes.append(data[y_prediction_filtered[i]])
 
+        notes_dict = {}
+        current_start_duration_name = []
+        for note_frame_idx in range(len(filtered_list_of_notes)):
+            note_name = filtered_list_of_notes[note_frame_idx]
+            if current_start_duration_name and note_frame_idx == len(filtered_list_of_notes)-1:
+                notes_dict[len(notes_dict)] = current_start_duration_name
+            if not current_start_duration_name and note_name != 'na':
+                current_start_duration_name = [note_frame_idx, 1, note_name]
+                continue
+            elif note_name == 'na':
+                continue
+            if note_name != current_start_duration_name[2]:
+                notes_dict[len(notes_dict)] = current_start_duration_name
+                current_start_duration_name = []
+            else:
+                current_start_duration_name[1] = current_start_duration_name[1] + 1
+
+        x = range(len(y_prediction_filtered))
+        y = y_prediction_filtered
         plt.scatter(x, y)
         plt.show()
-
+        return notes_dict
 
 
 learnNotes = LearnNotes()
-learnNotes.main()
-filename = './resources/notesStratUnsplit/2nd-string-all-notes-01.m4a'
+# learnNotes.main()
+filename = './resources/notesStratUnsplit/5th-string-all-notes-02.m4a'
+# filename = './resources/c-major-scale.mp3'
+# filename = './resources/ApexGuitarSection1.mp3'
+# filename = './resources/d-flat-ionian-mode-on-treble-clef.mp3'
 a, sr = librosa.load(filename)
-learnNotes.predict_notes(a)
+notes_to_plot = learnNotes.predict_notes(a)
+print(notes_to_plot)
