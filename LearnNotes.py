@@ -20,18 +20,21 @@ class LearnNotes:
         self.HOP_SIZE = int(self.FRAME_SIZE / 32)
         self.FRAMES_PER_IMAGE = 1
         self.TEST_VAL_SET_SIZE = 0.3
-        self.EPOCHS = 150
+        self.EPOCHS = 10
         self.REQUIRED_DURATION_TO_BE_NOTE = 1/8
 
     def generate_and_test_model(self, model_name):
         resource_path = "./resources/allPitchNotes"
-        [data_images, data_labels, note_names] = self.extract_data_from_files(resource_path)
+        [data_images, data_labels, note_names] = self.extract_data_from_files(
+            resource_path)
         # Find random sample of exclude from train set and add to test/val set
         indices_of_test_val_set = np.random.randint(len(data_images),
                                                     size=int(len(data_images) * self.TEST_VAL_SET_SIZE))
         # Split val and test data in 50:50 ratio
-        indices_of_test_set = indices_of_test_val_set[:int(len(indices_of_test_val_set) / 2)]
-        indices_of_val_set = indices_of_test_val_set[int(len(indices_of_test_val_set) / 2):]
+        indices_of_test_set = indices_of_test_val_set[:int(
+            len(indices_of_test_val_set) / 2)]
+        indices_of_val_set = indices_of_test_val_set[int(
+            len(indices_of_test_val_set) / 2):]
         train_images = data_images
         train_labels = data_labels
         test_images = []
@@ -66,18 +69,21 @@ class LearnNotes:
         transformed_val_labels = encoder.fit_transform(val_labels)
 
         model = keras.Sequential([
-            keras.layers.Flatten(input_shape=(len(test_images[0]), self.FRAMES_PER_IMAGE)),
+            keras.layers.Flatten(input_shape=(
+                len(test_images[0]), self.FRAMES_PER_IMAGE)),
             keras.layers.Dense(128 * 4, activation="relu"),
             keras.layers.Dense(len(note_names), activation="softmax")
         ])
         model.summary()
-        model.compile(optimizer="adam", loss="categorical_crossentropy", metrics=["accuracy"])
+        model.compile(optimizer="adam",
+                      loss="categorical_crossentropy", metrics=["accuracy"])
         model.fit(train_images, transformed_train_label,
                   validation_data=(val_images, transformed_val_labels),
                   epochs=self.EPOCHS, shuffle=True,
                   callbacks=tf.keras.callbacks.EarlyStopping(verbose=1, patience=10))
 
-        test_loss, test_acc = model.evaluate(test_images, transformed_test_label)
+        test_loss, test_acc = model.evaluate(
+            test_images, transformed_test_label)
         print(f"Train set size was: {len(train_images)}")
         print(f"Test set size was: {len(test_images)}")
         print(f"Tested acc: {test_acc}")
@@ -97,7 +103,8 @@ class LearnNotes:
         model.save(f"./models/{model_name}.h5")
 
     def convert_audio_to_spectrogram(self, audio_sample):
-        stft_audio = librosa.stft(audio_sample, n_fft=self.FRAME_SIZE, hop_length=self.HOP_SIZE)
+        stft_audio = librosa.stft(
+            audio_sample, n_fft=self.FRAME_SIZE, hop_length=self.HOP_SIZE)
         y_scale = np.abs(stft_audio) ** 2
         y_log_scale = librosa.power_to_db(y_scale)
         min_mag = np.min(y_log_scale)
@@ -133,7 +140,8 @@ class LearnNotes:
     def convert_notes_dict_to_seconds_from_frames(self, notes, fps):
         notes_conv = {}
         for noteIdx in range(len(notes)):
-            notes_conv[len(notes_conv)] = [notes[noteIdx][0] / fps, notes[noteIdx][1] / fps, notes[noteIdx][2]]
+            notes_conv[len(notes_conv)] = [notes[noteIdx][0] /
+                                           fps, notes[noteIdx][1] / fps, notes[noteIdx][2]]
         return notes_conv
 
     def extract_data_from_files(self, resource_path):
@@ -164,30 +172,34 @@ class LearnNotes:
                     note_name = 'na'
                     if frame > frame_of_note_start:
                         note_name = curr_note_name
-                    data_images.append(y_log_scale[:, frame:frame + self.FRAMES_PER_IMAGE])
+                    data_images.append(
+                        y_log_scale[:, frame:frame + self.FRAMES_PER_IMAGE])
                     data_labels.append(note_name)
         note_names1 = np.insert(note_names, len(note_names), 'na')
         for train_image in data_images:
             if str(train_image.shape) != f'(2049, {self.FRAMES_PER_IMAGE})':
-                raise Exception(f'Wrong image shape found: {str(train_image.shape)}')
+                raise Exception(
+                    f'Wrong image shape found: {str(train_image.shape)}')
         print("Finished extracting and fragmenting data from files")
         return [data_images, data_labels, note_names1]
 
     # return an array of suggested notes throughout the audio track
     def predict_notes(self, audio_track, sample_rate):
         length_of_track_s = len(audio_track) / sample_rate
-        model = keras.models.load_model('./models/notePredictModel9.h5')
+        model = keras.models.load_model('./models/notePredictModel10.h5')
         y_log_scale = self.convert_audio_to_spectrogram(audio_track)
         frames_per_second = len(y_log_scale[0]) / length_of_track_s
         print(f"frames per second {frames_per_second}")
         data_images = []
         for frame in range(len(y_log_scale[0]) - self.FRAMES_PER_IMAGE):
-            data_images.append(y_log_scale[:, frame:frame + self.FRAMES_PER_IMAGE])
+            data_images.append(
+                y_log_scale[:, frame:frame + self.FRAMES_PER_IMAGE])
         data_images = np.array(data_images)
         data_images = np.asarray(data_images)
         prediction = model.predict(data_images)
         y_prediction = np.argmax(prediction, axis=1)
-        y_prediction_filtered = self.filter_notes(y_prediction, frames_per_second)
+        y_prediction_filtered = self.filter_notes(
+            y_prediction, frames_per_second)
         with open(r'./resources/notes_list.json') as json_file:
             data = json.load(json_file)
         filtered_list_of_notes = []
@@ -209,7 +221,8 @@ class LearnNotes:
                 current_start_duration_name = []
             else:
                 current_start_duration_name[1] = current_start_duration_name[1] + 1
-        notes_dict_s = self.convert_notes_dict_to_seconds_from_frames(notes_dict, frames_per_second)
+        notes_dict_s = self.convert_notes_dict_to_seconds_from_frames(
+            notes_dict, frames_per_second)
         x = range(len(y_prediction_filtered))
         y = y_prediction_filtered
         plt.scatter(x, y)
@@ -218,7 +231,7 @@ class LearnNotes:
 
 
 learnNotes = LearnNotes()
-# learnNotes.generate_and_test_model('notePredictModel9')
+learnNotes.generate_and_test_model('notePredictModel10')
 filename = './resources/notesStratUnsplit/3rd-string-all-notes-02.m4a'
 # filename = './resources/c-major-scale.mp3'
 # filename = './resources/ApexGuitarSection1.mp3'
